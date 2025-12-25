@@ -1,11 +1,20 @@
-import Navbar from "./Navbar";
+import { Layout, ConfigProvider } from "antd";
+import Navbar from "../layout/Navbar";
+
+const { Content } = Layout;
 
 const AppLayout = ({ children }) => {
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Navbar />
-      <div className="p-6">{children}</div>
-    </div>
+    <ConfigProvider theme={{ token: { colorPrimary: "#1890ff" } }}>
+      <Layout style={{ minHeight: "100vh" }}>
+        <Navbar />
+        <Content style={{ padding: "24px", backgroundColor: "#f5f5f5" }}>
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
+        </Content>
+      </Layout>
+    </ConfigProvider>
   );
 };
 

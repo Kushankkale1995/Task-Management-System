@@ -1,87 +1,72 @@
-import { Form, Input, Button, Card, Typography, message } from "antd";
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { loginUser } from "../api/authApi";
-import { useState } from "react";
-import { loginSuccess, isAuthenticated } from "../utils/auth";
-
-const { Text } = Typography;
+import { Button, Form, Input, Card, message } from "antd";
+import { useNavigate, Link } from "react-router-dom";
+import api from "../api/axios";
+import { setAuthToken } from "../api/axios";
+import { loginUser } from "../api/auth.api";
 
 const Login = () => {
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const from = location.state?.from || "/dashboard"; // redirect after login
-
-  const onFinish = async (values) => {
+  const [form] = Form.useForm();
+  
+  const handleLogin = async (values) => {
     try {
-      setLoading(true);
-
-      const payload = {
-        email: values.email.trim(),
-        password: values.password.trim(),
-      };
-
-      const res = await loginUser(payload);
-
-      // Store token in localStorage
-      localStorage.setItem("token", res.data.token);
-
-      // Update any app state if needed
-      loginSuccess(res.data.token); // optional if you track login globally
-
-      message.success("Login successful");
-
-      // Redirect to dashboard or previous page
-      navigate(from, { replace: true });
+      console.log("Login attempt with:", { email: values.email, password: "***" });
+      const res = await loginUser(values);
+      console.log("Login response:", res.data);
+      if (res?.data?.token) {
+        setAuthToken(res.data.token);
+        message.success("Login successful!");
+        try {
+          await api.get("/auth/me");
+          navigate("/");
+        } catch (err) {
+          const errMsg = err?.response?.data?.message || err.message || "Token verification failed";
+          console.error("Token verification failed after login", err?.response?.data || err.message);
+          setAuthToken(null);
+          message.error(errMsg);
+        }
+      } else {
+        console.error("No token in login response", res.data);
+        message.error("No token received from server");
+      }
     } catch (err) {
-      console.error("Login error:", err);
-      message.error("Invalid email or password");
-    } finally {
-      setLoading(false);
+      const errMsg = err?.response?.data?.message || err.message;
+      console.error("Login error:", err.response?.data || err.message);
+      console.log("Full error response:", err.response);
+      message.error(errMsg || "Login failed");
     }
   };
 
+
   return (
-    <div className="flex justify-center items-center h-screen bg-gray-100">
+    <div className="flex h-screen items-center justify-center">
       <Card title="Login" className="w-96">
-        <Form layout="vertical" onFinish={onFinish}>
-          <Form.Item
-            name="email"
+        <Form form={form} onFinish={handleLogin} layout="vertical">
+          <Form.Item 
+            name="email" 
             label="Email"
-            rules={[{ required: true, type: "email" }]}
+            rules={[
+              { required: true, message: "Email is required" },
+              { type: "email", message: "Invalid email" }
+            ]}
           >
-            <Input />
+            <Input placeholder="Enter your email" />
           </Form.Item>
-
-          <Form.Item
-            name="password"
+          <Form.Item 
+            name="password" 
             label="Password"
-            rules={[{ required: true, min: 6 }]}
+            rules={[{ required: true, message: "Password is required" }]}
           >
-            <Input.Password />
+            <Input.Password placeholder="Enter your password" />
           </Form.Item>
-
-          <Button type="primary" htmlType="submit" block loading={loading}>
+          <Button type="primary" htmlType="submit" block>
             Login
           </Button>
-
-          <Button
-            block
-            className="mt-3"
-            onClick={() =>
-              navigate(isAuthenticated() ? "/dashboard" : "/", { replace: true })
-            }
-          >
-            Back
-          </Button>
-
-          <div className="text-center mt-4">
-            <Text>
-              Don&apos;t have an account? <Link to="/register">Register</Link>
-            </Text>
-          </div>
         </Form>
+        <div className="mt-3 text-center">
+          <span>Don't have an account? </span>
+          <Link to="/register">Register</Link>
+        </div>
       </Card>
     </div>
   );

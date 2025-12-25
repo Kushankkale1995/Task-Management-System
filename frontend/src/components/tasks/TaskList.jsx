@@ -1,199 +1,220 @@
-import { Table, Button, Select, Modal, Form, Input, message } from "antd";
+import { Table, Space, Button, Popconfirm, Tag, Empty, Spin, Row, Col, Select, message } from "antd";
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import { getTasks, deleteTask } from "../../api/task.api";
+import { getCategories } from "../../api/category.api";
 import { useEffect, useState } from "react";
-import { getTasks, deleteTask, updateTask, getPublicTasks } from "../../api/taskApi";
-import { getCategories } from "../../api/categoryApi"; // create this API
+import _ from "lodash";
+import TaskForm from "./TaskForm";
 
-const { Option } = Select;
-
-const TaskList = ({ loggedIn }) => {
+const TaskList = () => {
   const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
+  const [loading, setLoading] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [filterStatus, setFilterStatus] = useState(null);
+  const [filterPriority, setFilterPriority] = useState(null);
+  const [filterCategory, setFilterCategory] = useState(null);
+  const [sortBy, setSortBy] = useState("createdAt");
 
-  // Fetch tasks & categories on load
-  useEffect(() => {
-    fetchTasks();
-    if (loggedIn) fetchCategories();
-  }, [loggedIn]);
-
-  const fetchTasks = async () => {
-    setLoading(true);
+  const loadTasks = async () => {
     try {
-      let data = [];
-      if (loggedIn && localStorage.getItem("token")) {
-        data = await getTasks();
-      } else {
-        data = await getPublicTasks();
-      }
-      setTasks(data);
+      setLoading(true);
+      const res = await getTasks();
+      setTasks(res.data || []);
     } catch (err) {
-      console.error("Failed to fetch tasks:", err);
-      if (loggedIn && err?.response?.status === 401) {
-        const publicData = await getPublicTasks();
-        setTasks(publicData);
-        message.warning("Session expired. Showing public tasks.");
-      }
+      message.error("Error loading tasks");
+      console.error("Error loading tasks:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchCategories = async () => {
+  const loadCategories = async () => {
     try {
-      const data = await getCategories();
-      setCategories(data);
+      const res = await getCategories();
+      setCategories(res.data || []);
     } catch (err) {
-      console.error("Failed to fetch categories:", err);
+      console.error("Error loading categories:", err);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!loggedIn) return;
+  useEffect(() => {
+    loadTasks();
+    loadCategories();
+  }, []);
+
+  const handleDelete = async (taskId) => {
     try {
-      await deleteTask(id);
-      setTasks((prev) => prev.filter((t) => t._id !== id));
-      message.success("Task deleted");
+      await deleteTask(taskId);
+      message.success("Task deleted successfully");
+      loadTasks();
     } catch (err) {
-      console.error("Delete failed:", err);
-      message.error("Failed to delete task");
+      message.error("Error deleting task");
+      console.error("Error deleting task:", err);
     }
   };
 
-  const handleEdit = (task) => {
-    setEditingTask(task);
-    setModalVisible(true);
-  };
+  // Apply filters using Lodash
+  let filteredTasks = tasks;
+  if (filterStatus) {
+    filteredTasks = _.filter(filteredTasks, { status: filterStatus });
+  }
+  if (filterPriority) {
+    filteredTasks = _.filter(filteredTasks, { priority: filterPriority });
+  }
+  if (filterCategory) {
+    filteredTasks = _.filter(filteredTasks, (task) => task.category?._id === filterCategory);
+  }
 
-  const handleUpdate = async (values) => {
-    try {
-      const updated = await updateTask(editingTask._id, values);
-      setTasks((prev) =>
-        prev.map((t) => (t._id === editingTask._id ? updated.data || updated : t))
-      );
-      setModalVisible(false);
-      setEditingTask(null);
-      message.success("Task updated");
-    } catch (err) {
-      console.error("Update failed:", err);
-      message.error("Failed to update task");
-    }
-  };
+  // Apply sorting using Lodash
+  const priorityOrder = { High: 3, Medium: 2, Low: 1 };
+  filteredTasks = _.orderBy(
+    filteredTasks,
+    [
+      sortBy === "priority" ? (task) => priorityOrder[task.priority] || 0 : 
+      sortBy === "dueDate" ? (task) => new Date(task.dueDate) || new Date(0) : 
+      (task) => new Date(task.createdAt)
+    ],
+    ["desc"]
+  );
 
-  // Filter tasks
-  const filteredTasks = tasks.filter((t) => {
-    const statusMatch = filterStatus ? t.status === filterStatus : true;
-    const categoryMatch = filterCategory ? t.category?._id === filterCategory : true;
-    return statusMatch && categoryMatch;
-  });
+  const statusColors = { Pending: "orange", "In Progress": "blue", Completed: "green" };
+  const priorityColors = { Low: "green", Medium: "orange", High: "red" };
 
   const columns = [
-    { title: "Title", dataIndex: "title", key: "title" },
-    { title: "Status", dataIndex: "status", key: "status" },
-    { title: "Priority", dataIndex: "priority", key: "priority" },
-    { title: "Category", dataIndex: ["category", "name"], key: "category" },
+    {
+      title: "Title",
+      dataIndex: "title",
+      key: "title",
+      render: (text) => <strong>{text}</strong>,
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status) => <Tag color={statusColors[status]}>{status}</Tag>,
+    },
+    {
+      title: "Priority",
+      dataIndex: "priority",
+      key: "priority",
+      render: (priority) => <Tag color={priorityColors[priority]}>{priority}</Tag>,
+    },
+    {
+      title: "Category",
+      dataIndex: ["category", "name"],
+      key: "category",
+      render: (name) => name || "—",
+    },
     {
       title: "Due Date",
       dataIndex: "dueDate",
       key: "dueDate",
-      render: (date) => (date ? new Date(date).toLocaleDateString() : "-"),
+      render: (date) => (date ? new Date(date).toLocaleDateString() : "—"),
     },
     {
       title: "Actions",
       key: "actions",
-      render: (_, record) =>
-        loggedIn ? (
-          <>
-            <Button type="link" onClick={() => handleEdit(record)}>
-              Edit
-            </Button>
-            <Button danger onClick={() => handleDelete(record._id)}>
-              Delete
-            </Button>
-          </>
-        ) : null,
+      render: (_, record) => (
+        <Space>
+          <Button
+            type="primary"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => setEditingTask(record)}
+          />
+          <Popconfirm
+            title="Delete Task"
+            description="Are you sure you want to delete this task?"
+            onConfirm={() => handleDelete(record._id)}
+            okText="Yes"
+            cancelText="No"
+          >
+            <Button danger size="small" icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
     },
   ];
 
   return (
-    <div>
-      {loggedIn && (
-        <div style={{ marginBottom: 16 }}>
-          <Select
-            placeholder="Filter by status"
-            style={{ width: 180, marginRight: 16 }}
-            allowClear
-            onChange={(value) => setFilterStatus(value)}
-          >
-            <Option value="Pending">Pending</Option>
-            <Option value="In Progress">In Progress</Option>
-            <Option value="Completed">Completed</Option>
-          </Select>
-
-          <Select
-            placeholder="Filter by category"
-            style={{ width: 180 }}
-            allowClear
-            onChange={(value) => setFilterCategory(value)}
-          >
-            {categories.map((cat) => (
-              <Option key={cat._id} value={cat._id}>
-                {cat.name}
-              </Option>
-            ))}
-          </Select>
-        </div>
-      )}
-
-      <Table
-        dataSource={filteredTasks}
-        columns={columns}
-        rowKey="_id"
-        loading={loading}
+    <div className="space-y-4">
+      <TaskForm
+        onTaskSaved={() => {
+          loadTasks();
+          setEditingTask(null);
+        }}
+        task={editingTask}
+        categories={categories}
+        onCancel={() => setEditingTask(null)}
       />
 
-      {/* Edit Modal */}
-      <Modal
-        title="Edit Task"
-        visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={null}
-      >
-        {editingTask && (
-          <Form
-            initialValues={{
-              title: editingTask.title,
-              status: editingTask.status,
-              priority: editingTask.priority,
-            }}
-            onFinish={handleUpdate}
-            layout="vertical"
-          >
-            <Form.Item name="title" label="Title" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
+      <div className="bg-white p-4 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Filter & Sort</h3>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              placeholder="Filter by Status"
+              allowClear
+              onChange={setFilterStatus}
+              className="w-full"
+              options={[
+                { label: "Pending", value: "Pending" },
+                { label: "In Progress", value: "In Progress" },
+                { label: "Completed", value: "Completed" },
+              ]}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              placeholder="Filter by Priority"
+              allowClear
+              onChange={setFilterPriority}
+              className="w-full"
+              options={[
+                { label: "Low", value: "Low" },
+                { label: "Medium", value: "Medium" },
+                { label: "High", value: "High" },
+              ]}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              placeholder="Filter by Category"
+              allowClear
+              onChange={setFilterCategory}
+              className="w-full"
+              options={categories.map((cat) => ({ label: cat.name, value: cat._id }))}
+            />
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Select
+              value={sortBy}
+              onChange={setSortBy}
+              className="w-full"
+              options={[
+                { label: "Newest", value: "createdAt" },
+                { label: "Due Date", value: "dueDate" },
+                { label: "Priority", value: "priority" },
+              ]}
+            />
+          </Col>
+        </Row>
+      </div>
 
-            <Form.Item name="status" label="Status" rules={[{ required: true }]}>
-              <Select>
-                <Option value="Pending">Pending</Option>
-                <Option value="In Progress">In Progress</Option>
-                <Option value="Completed">Completed</Option>
-              </Select>
-            </Form.Item>
-
-            <Form.Item name="priority" label="Priority" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-
-            <Button type="primary" htmlType="submit" block>
-              Update
-            </Button>
-          </Form>
+      <Spin spinning={loading}>
+        {filteredTasks.length > 0 ? (
+          <Table
+            columns={columns}
+            dataSource={filteredTasks}
+            rowKey="_id"
+            pagination={{ pageSize: 10 }}
+            className="bg-white"
+          />
+        ) : (
+          <Empty description={loading ? "Loading..." : "No tasks found"} />
         )}
-      </Modal>
+      </Spin>
     </div>
   );
 };

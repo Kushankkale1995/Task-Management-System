@@ -1,43 +1,38 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import Navbar from "./components/layout/Navbar";
-import ProtectedRoute from "./routes/ProtectedRoute";
-import { isAuthenticated } from "./utils/auth";
+// App.jsx
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import AppRoutes from "./routes/AppRoutes";
+import api from "./api/axios";
+import { setAuthToken } from "./api/axios";
 
-function App() {
-  return (
-    <BrowserRouter>
-      {/* <Navbar /> */}
+const App = () => {
+	const navigate = useNavigate();
 
-      <Routes>
-        {/* Dashboard public view */}
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+	useEffect(() => {
+		const verify = async () => {
+			const token = localStorage.getItem("token");
+				if (!token) {
+				console.log("No token in localStorage, skipping verification");
+				return;
+			}
 
-        {/* Login / Register */}
-        <Route
-          path="/login"
-          element={isAuthenticated() ? <Navigate to="/" replace /> : <Login />}
-        />
-        <Route path="/register" element={<Register />} />
+				// ensure axios default header is set for immediate requests
+				setAuthToken(token);
 
-        {/* Profile protected */}
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
+			try {
+				console.log("Verifying token prefix:", token.slice ? token.slice(0, 12) : token);
+				await api.get("/auth/me");
+			} catch (err) {
+				console.log("Token validation failed, clearing token", err?.response?.data || err.message);
+				localStorage.removeItem("token");
+				navigate("/login");
+			}
+		};
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
+		verify();
+	}, [navigate]);
+
+	return <AppRoutes />;
+};
 
 export default App;
